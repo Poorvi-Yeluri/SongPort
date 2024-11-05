@@ -6,11 +6,18 @@ import logger from './src/common/logger.ts';
 
 const PORT = process.env.PORT || 3001;
 
-const options = {
-    key: fs.readFileSync('./certs/localhost+2-key.pem'),
-    cert: fs.readFileSync('./certs/localhost+2.pem')
-};
+if (process.env.NODE_ENV === 'production') {
+    app.listen(PORT, () => {
+        logger.info(`Server is running on https://localhost:${PORT}`);
+    });
+} else {
+    const options = {
+        key: fs.readFileSync('./certs/localhost+2-key.pem'),
+        cert: fs.readFileSync('./certs/localhost+2.pem')
+    };
+    
+    https.createServer(options, app).listen(PORT, () => {
+        logger.info(`Server is running on https://localhost:${PORT}`);
+    });
+}
 
-https.createServer(options, app).listen(PORT, () => {
-    logger.info(`Server is running on https://localhost:${PORT}`);
-});

@@ -30,7 +30,11 @@ app.use(express.static(__dirname));
 
 // Default route to serve index.html
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    if (req.session.accessToken) {
+        res.sendFile(path.join(__dirname, 'index.html'));
+    } else {
+        res.redirect('/spotify/authorize');
+    }
 });
 
 const MemStore = MemoryStore(session);
@@ -59,5 +63,3 @@ app.use('/spotify', spotifyRoutes);
 app.use(errorHandler);
 
 export default app;
-
-
