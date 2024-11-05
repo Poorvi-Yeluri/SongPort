@@ -11,7 +11,11 @@ import { errorHandler } from './src/common/middleware/error.middleware.ts';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-const allowedOrigins = ['https://127.0.0.1:3001', 'https://localhost:3001'];
+const allowedOrigins = [
+    'https://127.0.0.1:3001', 
+    'https://localhost:3001', 
+    'https://song-port.vercel.app'
+];
 app.use(
     cors({
         origin: (origin, callback) => {
