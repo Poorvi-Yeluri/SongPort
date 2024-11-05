@@ -1,11 +1,16 @@
-import dotenv from 'dotenv';
+import 'dotenv/config';
+import https from 'https';
+import fs from 'fs';
 import app from './app.ts';
 import logger from './src/common/logger.ts';
 
-dotenv.config();
+const PORT = process.env.PORT || 3001;
 
-const PORT = process.env.PORT || 3000;
+const options = {
+    key: fs.readFileSync('./certs/localhost+2-key.pem'),
+    cert: fs.readFileSync('./certs/localhost+2.pem')
+};
 
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+https.createServer(options, app).listen(PORT, () => {
+    logger.info(`Server is running on https://localhost:${PORT}`);
 });

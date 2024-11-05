@@ -1,61 +1,94 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import SpotifyService from './spotify.service.ts';
 import logger from '../common/logger.ts';
+import { SpotifyTokens, SpotifyPlaylist } from './spotify.interfaces.ts';
 
 class SpotifyController {
-    static async login(req: Request, res: Response): Promise<void> {
+    static tempCodeVerifier: string = '';
+    static accessToken: string = '';  // Static variable for access token
+    static refreshToken: string = ''; // Static variable for refresh token
+
+    static async authorize(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            logger.info('Initiating Spotify login process');
-            const authUrl = SpotifyService.getAuthUrl();
-            res.redirect(authUrl);
+            const codeVerifier = SpotifyService.generateCodeVerifier();
+            const codeChallenge = await SpotifyService.generateCodeChallenge(codeVerifier);
+
+            req.session.codeVerifier = codeVerifier;
+            SpotifyController.tempCodeVerifier = codeVerifier; // Temporary storage
+            req.session.save((err) => {
+                if (err) {
+                    return next(err);
+                }
+                res.redirect(SpotifyService.getAuthUrl(codeChallenge));
+            });
         } catch (error) {
-            logger.error('Error in login process: %o', error);
-            res.status(500).json({ error: 'Internal server error' });
+            next(error);
         }
     }
 
-    static async callback(req: Request, res: Response): Promise<void> {
+    static async callback(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const { code } = req.query;
-            if (typeof code !== 'string') {
-                throw new Error('Authorization code is missing or invalid.');
+            const codeVerifier = req.session.codeVerifier || SpotifyController.tempCodeVerifier;
+            if (!codeVerifier) {
+                throw new Error('Invalid code or code verifier');
             }
-            const tokens = await SpotifyService.getTokens(code);
-            logger.info('Successfully retrieved Spotify tokens');
-            res.json(tokens);
+
+            const tokens: SpotifyTokens = await SpotifyService.getTokens(req.query.code as string, codeVerifier);
+            logger.debug(`Retrieved tokens: ${JSON.stringify(tokens)}`);
+            
+            SpotifyController.accessToken = tokens.access_token;
+            SpotifyController.refreshToken = tokens.refresh_token;
+            logger.info('Successfully retrieved and stored Spotify tokens');
+            res.redirect('/');
         } catch (error) {
-            logger.error('Error in Spotify callback: %o', error);
-            res.status(500).json({ error: 'Failed to retrieve tokens' });
+            next(error);
         }
     }
 
-    static async getUserPlaylists(req: Request, res: Response): Promise<void> {
+    static async getUserPlaylists(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const accessToken = req.headers.authorization?.split(' ')[1];
+            const accessToken = SpotifyController.accessToken;
             if (!accessToken) {
                 throw new Error('Access token is missing.');
             }
-            const playlists = await SpotifyService.getUserPlaylists(accessToken);
-            logger.info('Fetched user playlists');
+
+            const playlists: SpotifyPlaylist[] = await SpotifyService.getUserPlaylists(accessToken);
             res.json(playlists);
         } catch (error) {
             logger.error('Error fetching playlists: %o', error);
-            res.status(500).json({ error: 'Failed to fetch playlists' });
+            next(error);
         }
     }
 
-    static async transferPlaylist(req: Request, res: Response): Promise<void> {
+    static async getUserPlaylistsWithItems(req: Request, res: Response, next: NextFunction): Promise<void> {
         try {
-            const { accessToken, playlistId, destination } = req.body;
+            const accessToken = SpotifyController.accessToken;
+            const playlistId = req.params.playlistId;
+
+            if (!accessToken || !playlistId) {
+                throw new Error('Missing access token or playlist ID');
+            }
+
+            const items = await SpotifyService.getPlaylistItems(accessToken, playlistId);
+            res.json({ items });
+        } catch (error) {
+            logger.error('Error fetching playlist items: %o', error);
+            next(error);
+        }
+    }
+
+    static async transferPlaylist(req: Request, res: Response, next: NextFunction): Promise<void> {
+        try {
+            const accessToken = SpotifyController.accessToken;
+            const { playlistId, destination } = req.body;
             if (!accessToken || !playlistId || !destination) {
                 throw new Error('Missing required parameters.');
             }
             const result = await SpotifyService.transferPlaylist(accessToken, playlistId, destination);
-            logger.info('Transferred playlist successfully');
             res.json(result);
         } catch (error) {
             logger.error('Error transferring playlist: %o', error);
-            res.status(500).json({ error: 'Failed to transfer playlist' });
+            next(error);
         }
     }
 }
